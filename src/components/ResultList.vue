@@ -9,6 +9,7 @@
       <a :href="result.url" target="_blank" class="text-blue-500 font-bold">
         {{ result.title }}
       </a>
+      <!-- v-html renders the <b> tags -->
       <p class="text-sm text-black snippet" v-html="highlightSnippet(result.text)"></p>
       <p class="text-xs text-gray-500">Score: {{ result.score.toFixed(7) }}</p>
     </div>
@@ -33,42 +34,47 @@ const props = defineProps<{
   query: string
 }>()
 
-// Utility to escape special characters in regex.
-const escapeRegExp = (string: string): string => {
-  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+// Utility: Escape regex special characters in the query term.
+const escapeRegex = (str: string): string => {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
 const highlightSnippet = (text: string): string => {
   if (!text) return ''
 
-  // Split text into sentences using punctuation as delimiter.
-  const sentences = text.split(/(?<=[.?!])\s+/)
+  // Break the text into individual sentences using punctuation.
+  let sentences = text.split(/(?<=[.!?])\s+/)
+  sentences = sentences.map((s) => s.trim()).filter((s) => s.length > 0)
+
+  // Split the query into individual terms.
   const queryTerms = props.query.split(/\s+/).filter((term) => term)
 
-  // Find the index of the first sentence that contains any query term.
-  const index = sentences.findIndex((sentence) =>
-    queryTerms.some((term) => new RegExp(escapeRegExp(term), 'i').test(sentence)),
-  )
+  let snippet = ''
 
-  let snippetSentences: string[]
+  if (sentences.length > 1) {
+    // Try to find the first sentence that contains any query term.
+    const matchIndex = sentences.findIndex((sentence) =>
+      queryTerms.some((term) => new RegExp(escapeRegex(term), 'i').test(sentence)),
+    )
 
-  if (index === -1) {
-    // If no sentence contains the query term, default to the first two sentences.
-    snippetSentences = sentences.slice(0, 2)
+    if (matchIndex === -1) {
+      // If no sentence contains the query term, fall back to the first two sentences.
+      snippet = sentences.slice(0, 2).join(' ')
+    } else {
+      // Otherwise, select the matching sentence plus one sentence before and after (if available).
+      const start = Math.max(matchIndex - 1, 0)
+      const end = Math.min(matchIndex + 1, sentences.length - 1)
+      snippet = sentences.slice(start, end + 1).join(' ')
+    }
   } else {
-    // Include the sentence containing the query term plus one sentence before and after (if available).
-    const start = index > 0 ? index - 1 : index
-    const end = index < sentences.length - 1 ? index + 1 : index
-    snippetSentences = sentences.slice(start, end + 1)
+    // Fallback: if sentence splitting doesn't work, take the first 300 characters.
+    snippet = text.substring(0, 300)
   }
 
-  let snippet = snippetSentences.join(' ')
-
-  // Highlight each occurrence of the query term.
+  // For each query term, wrap occurrences with <b> tags.
   queryTerms.forEach((term) => {
-    const escapedTerm = escapeRegExp(term)
-    const regex = new RegExp(`(${escapedTerm})`, 'gi')
-    snippet = snippet.replace(regex, '<span class="highlight">$1</span>')
+    const regex = new RegExp(`(${escapeRegex(term)})`, 'gi')
+    snippet = snippet.replace(regex, '<b>$1</b>')
   })
 
   return snippet
@@ -76,18 +82,12 @@ const highlightSnippet = (text: string): string => {
 </script>
 
 <style scoped>
+/* Limit snippet display to approximately 2 lines */
 .snippet {
   display: -webkit-box;
   -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2; /* Limit to 2 lines */
+  -webkit-line-clamp: 2; /* Change to 3 if you prefer 3 lines */
   overflow: hidden;
   line-height: 1.5;
-  width: 100%;
-}
-
-/* Style for the highlighted text */
-.highlight {
-  background-color: yellow;
-  font-weight: bold;
 }
 </style>
